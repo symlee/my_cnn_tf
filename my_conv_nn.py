@@ -1,0 +1,203 @@
+import tensorflow as tf
+import numpy as np
+import import_images
+import pickle
+
+# return a random tensor w/ normal dist as a variable
+def init_weights(shape):
+    return tf.Variable(tf.random_normal(shape, stddev=0.01))
+
+# return convolutional neural network formulation
+def model(X, w, w2, w3, w4, w_o, p_keep_conv, p_keep_hidden):
+    '''
+    w = init_weights([3, 3, 1, 6])
+    w2 = init_weights([3, 3, 6, 12])
+    w3 = init_weights([3, 3, 12, 24])
+    w4 = init_weights([24 * 4 * 4, 48])
+    w_o = init_weights([48, 3])
+    '''
+    # First conv layer
+    l1a = tf.nn.relu(tf.nn.conv2d(X, w, [1, 1, 1, 1], 'SAME'))
+    print "l1a.shape:", l1a.get_shape()  # for debugging
+    l1 = tf.nn.max_pool(l1a, ksize=[1, 2, 2, 1],
+                        strides=[1, 2, 2, 1], padding='SAME')
+    # with prob p_keep_conv
+    l1 = tf.nn.dropout(l1, p_keep_conv)
+    print "l1.shape:", l1.get_shape()
+
+    # Second conv layer
+    l2a = tf.nn.relu(tf.nn.conv2d(l1, w2, [1, 1, 1, 1], 'SAME'))
+    print "l2a.shape:", l2a.get_shape()
+    l2 = tf.nn.max_pool(l2a, ksize=[1, 2, 2, 1],
+                        strides=[1, 2, 2, 1], padding='SAME')
+    l2 = tf.nn.dropout(l2, p_keep_conv)
+    print "l2.shape:", l2.get_shape()
+
+    # Third conv layer
+    l3a = tf.nn.relu(tf.nn.conv2d(l2, w3, [1, 1, 1, 1], 'SAME'))
+    print "l3a.shape:", l3a.get_shape()
+    l3 = tf.nn.max_pool(l3a, ksize=[1, 2, 2, 1],
+                        strides=[1, 2, 2, 1], padding='SAME')
+    print "l3.shape:", l3.get_shape()
+
+    # Fully connected layer 1
+    l3Shape = l3.get_shape().as_list()
+    print "list", l3Shape
+    l3 = tf.reshape(l3, [-1, l3Shape[1] * l3Shape[2] * l3Shape[3]])      # problem area
+    l3 = tf.nn.dropout(l3, p_keep_conv)
+    print "l3.shape:", l3.get_shape()
+
+    # Fully connected layer 2
+    l4 = tf.nn.relu(tf.matmul(l3, w4))
+    l4 = tf.nn.dropout(l4, p_keep_hidden)
+    print "l4.shape:", l4.get_shape()
+
+    # Output layer
+    pyx = tf.matmul(l4, w_o)
+    print "pyx.shape:", pyx.get_shape()
+
+    return pyx
+
+'''
+class DataSet(object):
+    def __init__(self, images, labels, fake_data=False):
+
+        if fake_data:
+            self._num_examples = 10000
+        else:
+            assert images.shape[0] == labels.shape[0], (
+                "images.shape: %s labels.shape: %s" % (images.shape,
+                                                       labels.shape))
+            self._num_examples = images.shape[0]
+            # Convert shape from [num examples, rows, columns, depth]
+            # to [num examples, rows*columns] (assuming depth == 1)
+            assert images.shape[3] == 1
+            images = images.reshape(images.shape[0],
+                                    images.shape[1] * images.shape[2])
+            # Convert from [0, 255] -> [0.0, 1.0].
+            images = images.astype(np.float32)
+            images = np.multiply(images, 1.0 / 255.0)
+
+        self._images = images
+        self._labels = labels
+        self._epochs_completed = 0
+        self._index_in_epoch = 0
+
+    @property
+    def images(self):
+        return self._images
+
+    @property
+    def labels(self):
+        return self._labels
+
+    @property
+    def num_examples(self):
+        return self._num_examples
+
+    @property
+    def epochs_completed(self):
+        return self._epochs_completed
+
+    def next_batch(self, batch_size, fake_data=False):
+        """Return the next `batch_size` examples from this data set."""
+        if fake_data:
+            fake_image = [1.0 for _ in xrange(784)]
+            fake_label = 0
+            return [fake_image for _ in xrange(batch_size)], [
+                fake_label for _ in xrange(batch_size)]
+        start = self._index_in_epoch
+        self._index_in_epoch += batch_size
+        if self._index_in_epoch > self._num_examples:
+            # Finished epoch
+            self._epochs_completed += 1
+            # Shuffle the data
+            perm = numpy.arange(self._num_examples)
+            numpy.random.shuffle(perm)
+            self._images = self._images[perm]
+            self._labels = self._labels[perm]
+            # Start next epoch
+            start = 0
+            self._index_in_epoch = batch_size
+            assert batch_size <= self._num_examples
+        end = self._index_in_epoch
+        return self._images[start:end], self._labels[start:end]
+
+
+class DataSets(object):
+        pass
+
+# read in CMU datasets (self-contained option using pickled data)
+data = DataSets()
+input_file = open('objs.pickle', 'rb')
+[imgMat, labMat] = pickle.load(input_file)
+input_file.close()
+
+img_mat = imgMat[:1200]
+lab_mat = labMat[:1200]
+img_mat_T = imgMat[1200:]
+lab_mat_T = labMat[1200:]
+
+data.train = DataSet(img_mat, lab_mat)
+data.test = DataSet(img_mat_T, lab_mat_T)
+trX, trY, teX, teY = data.train.images, data.train.labels, data.test.images, data.test.labels
+
+'''
+# read in CMU datasets (import_images option using locally stored images)
+mnist = import_images.read_data_sets(one_hot=True) # (removed to create a self-contained file)
+trX, trY, teX, teY = mnist.train.images, mnist.train.labels, mnist.test.images, mnist.test.labels
+
+trX = trX.reshape(-1, 240, 376, 1)
+teX = teX.reshape(-1, 240, 376, 1)
+
+# tensor placeholders to be used during training and testing
+X = tf.placeholder("float", [None, 240, 376, 1])
+Y = tf.placeholder("float", [None, 3])
+
+# shape of filters to be used in convolution layers in model
+'''
+# stock weights (leads to resources exhausted error)
+w = init_weights([3, 3, 1, 32])
+w2 = init_weights([3, 3, 32, 64])
+w3 = init_weights([3, 3, 64, 128])
+w4 = init_weights([128 * 4 * 4, 625])
+w_o = init_weights([625, 3])  # HCN
+'''
+# new weights (trying fewer nodes to conserve memory)
+w = init_weights([3, 3, 1, 6])
+w2 = init_weights([3, 3, 6, 12])
+w3 = init_weights([3, 3, 12, 24])
+# l3Shape[1] * l3Shape[2] * l3Shape[3]], 48
+w4 = init_weights([33840, 48])
+w_o = init_weights([48, 3])
+
+# placeholders for the probability that a neuron's output is kept during dropout (to prevent overfitting)
+p_keep_conv = tf.placeholder("float")
+p_keep_hidden = tf.placeholder("float")  # difference between keep_conv and keep_hidden?
+
+py_x = model(X, w, w2, w3, w4, w_o, p_keep_conv, p_keep_hidden)
+
+# somehow, dimensions of py_x doesn't match Y during execution and error is thrown...
+# dimension of Y is correct, as it has necessary shape [batch_size, num_classes]
+cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(py_x, Y))
+train_op = tf.train.RMSPropOptimizer(0.001, 0.9).minimize(cost)
+predict_op = tf.argmax(py_x, 0) # reduces across the 1st dimension of py_x
+
+sess = tf.Session()
+init = tf.initialize_all_variables()
+sess.run(init)
+
+for i in range(100):
+    for start, end in zip(range(0, len(trX), 32), range(32, len(trX), 32)):  # original batch size: 128 (now 32 to conserve memory), original step size 128 (now 32)
+        sess.run(train_op, feed_dict={X: trX[start:end], Y: trY[start:end],
+                                      p_keep_conv: 0.8, p_keep_hidden: 0.5})
+
+    test_indices = np.arange(len(teX)) # Get A Test Batch
+    np.random.shuffle(test_indices)
+    test_indices = test_indices[0:256]
+
+    print i, np.mean(np.argmax(teY[test_indices], axis=1) ==
+                     sess.run(predict_op, feed_dict={X: teX[test_indices],
+                                                     Y: teY[test_indices],
+                                                     p_keep_conv: 1.0,
+                                                     p_keep_hidden: 1.0}))
