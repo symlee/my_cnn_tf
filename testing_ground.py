@@ -1,199 +1,137 @@
-#!/usr/bin/env python
+'''
+AlexNet implementation example using TensorFlow library.
+This example is using the MNIST database of handwritten digits (http://yann.lecun.com/exdb/mnist/)
+AlexNet Paper (http://papers.nips.cc/paper/4824-imagenet-classification-with-deep-convolutional-neural-networks.pdf)
+Author: Aymeric Damien
+Project: https://github.com/aymericdamien/TensorFlow-Examples/
+'''
 
+import import_images
 import tensorflow as tf
-import numpy as np
 
-#from tqdm import tqdm
+# Parameters
+learning_rate = 0.001
+training_iters = 200000
+batch_size = 64
+display_step = 20
 
-# The width and height of the input images that we will be classifying.
-WIDTH = 224
-HEIGHT = 224
+# Network Parameters
+n_input = 784 # MNIST data input (img shape: 28*28)
+n_classes = 3 # MNIST total classes (0-9 digits)
+dropout = 0.8 # Dropout, probability to keep units
 
-N_INPUT = WIDTH * HEIGHT * 3
-N_CLASSES = 10
-P_DROPOUT = 0.75
 
-LEARNING_RATE = 0.001
-TRAINING_ITERS = 1000
-BATCH_SIZE = 1
+# read in CMU datasets (import_images option using locally stored images)
+mnist = import_images.read_data_sets(one_hot=True) # (removed to create a self-contained file)
+trX, trY, teX, teY = mnist.train.images, mnist.train.labels, mnist.test.images, mnist.test.labels
+trX = trX.reshape(-1, 240, 376, 1)
+teX = teX.reshape(-1, 240, 376, 1)
 
-# tf Graph input
-x = tf.placeholder(tf.float32, [None, N_INPUT])
-y = tf.placeholder(tf.float32, [None, N_CLASSES])
-keepProb = tf.placeholder(tf.float32) # dropout (keep probability)
+# tensor placeholders to be used during training and testing
+x = tf.placeholder("float", [None, 240, 376, 1])
+y = tf.placeholder("float", [None, 3])
 
-def conv2d(img, w, b, s) :
-    '''
-    Create a convolutional layer with weights @w and biases @b
-    '''
-    conv = tf.nn.conv2d(img, w, strides=[1, s, s, 1], padding='SAME')
-    bias = tf.nn.bias_add(conv, b)
-    relu = tf.nn.relu(bias)
+keep_prob = tf.placeholder("float") # dropout (keep probability)
 
-    return relu
+# Create AlexNet model
+def conv2d(name, l_input, w, b):
+    return tf.nn.relu(tf.nn.bias_add(tf.nn.conv2d(l_input, w, strides=[1, 1, 1, 1], padding='SAME'),b), name=name)
 
-def maxPool(img, k, s) :
-    '''
-    Create a max-pooling layer
-    '''
-    return tf.nn.max_pool(img, ksize=[1, k, k, 1], strides=[1, s, s, 1], padding='SAME')
+def max_pool(name, l_input, k):
+    return tf.nn.max_pool(l_input, ksize=[1, k, k, 1], strides=[1, k, k, 1], padding='SAME', name=name)
 
-def norm(layer, lsize) :
-    return tf.nn.lrn(layer, lsize, bias=2.0, alpha=0.001 / 9.0, beta=0.75)
+def norm(name, l_input, lsize=4):
+    return tf.nn.lrn(l_input, lsize, bias=1.0, alpha=0.001 / 9.0, beta=0.75, name=name)
 
-def convolutionalNet(img, _weights, _biases, _dropout) :
-    # First, reshape the input layer to match the dimensions of the images we
-    # plan to classify.
-    _X = tf.reshape(img, shape=[-1, WIDTH, HEIGHT, 3])
+def alex_net(_X, _weights, _biases, _dropout):
+    # Reshape input picture
+    _X = tf.reshape(_X, shape=[-1, 28, 28, 1])
 
-    # 1. Convolution layer, max-pooling, then dropout.
-    conv1 = conv2d(_X, _weights['wc1'], _biases['bc1'], 4)
-    print "conv1.shape:", conv1.get_shape()
-    pool1 = maxPool(conv1, 3, 2)
-    print "pool1.shape:", pool1.get_shape()
-    norm1 = norm(pool1, 4)
-    print "norm1.shape:", norm1.get_shape()
-    dropout1 = tf.nn.dropout(norm1, _dropout) # Is dropout necessary here?
-    print "dropout1.shape:", dropout1.get_shape()
+    # Convolution Layer
+    conv1 = conv2d('conv1', _X, _weights['wc1'], _biases['bc1'])
+    # Max Pooling (down-sampling)
+    pool1 = max_pool('pool1', conv1, k=2)
+    # Apply Normalization
+    norm1 = norm('norm1', pool1, lsize=4)
+    # Apply Dropout
+    norm1 = tf.nn.dropout(norm1, _dropout)
 
-    # 2. Second conv layer, setup identical
-    conv2 = conv2d(dropout1, _weights['wc2'], _biases['bc2'], 1)
-    print "conv2.shape:", conv2.get_shape()
-    pool2 = maxPool(conv2, 3, 2)
-    print "pool2.shape:", pool2.get_shape()
-    norm2 = norm(pool2, 4)
-    print "norm2.shape:", norm2.get_shape()
-    dropout2 = tf.nn.dropout(norm2, _dropout) # Is dropout necessary here?
-    print "dropout2.shape:", dropout2.get_shape()
+    # Convolution Layer
+    conv2 = conv2d('conv2', norm1, _weights['wc2'], _biases['bc2'])
+    # Max Pooling (down-sampling)
+    pool2 = max_pool('pool2', conv2, k=2)
+    # Apply Normalization
+    norm2 = norm('norm2', pool2, lsize=4)
+    # Apply Dropout
+    norm2 = tf.nn.dropout(norm2, _dropout)
 
-    # 3. Third conv layer
-    conv3 = conv2d(dropout2, _weights['wc3'], _biases['bc3'], 1)
-    print "conv3.shape:", conv3.get_shape()
+    # Convolution Layer
+    conv3 = conv2d('conv3', norm2, _weights['wc3'], _biases['bc3'])
+    # Max Pooling (down-sampling)
+    pool3 = max_pool('pool3', conv3, k=2)
+    # Apply Normalization
+    norm3 = norm('norm3', pool3, lsize=4)
+    # Apply Dropout
+    norm3 = tf.nn.dropout(norm3, _dropout)
 
-    # 4. Fourth conv layer
-    conv4 = conv2d(conv3, _weights['wc4'], _biases['bc4'], 1)
-    print "conv4.shape:", conv4.get_shape()
+    # Fully connected layer
+    dense1 = tf.reshape(norm3, [-1, _weights['wd1'].get_shape().as_list()[0]]) # Reshape conv3 output to fit dense layer input
+    dense1 = tf.nn.relu(tf.matmul(dense1, _weights['wd1']) + _biases['bd1'], name='fc1') # Relu activation
 
-    # 5. Fifth conv layer
-    conv5 = conv2d(conv4, _weights['wc5'], _biases['bc5'], 1)
-    print "conv5.shape:", conv5.get_shape()
-    pool5 = maxPool(conv5, 3, 2)
-    print "pool5.shape:", pool5.get_shape()
+    dense2 = tf.nn.relu(tf.matmul(dense1, _weights['wd2']) + _biases['bd2'], name='fc2') # Relu activation
 
-    # 6. Fully connected layer 1
-    wd1Shape = _weights['wd1'].get_shape().as_list()
-    print wd1Shape
-    fc1 = tf.reshape(pool5, [-1, wd1Shape[0]])
-    print "fc1.shape:", fc1.get_shape()
-
-    mul1 = tf.matmul(fc1, _weights['wd1']) + _biases['bd1']
-    print "mul1.shape:", mul1.get_shape()
-    relu1 = tf.nn.relu(mul1)
-    print "relu1.shape:", relu1.get_shape()
-
-    # 7. Fully connected layer 2
-    mul2 = tf.matmul(relu1, _weights['wd2']) + _biases['bd2']
-    print "mul2.shape:", mul2.get_shape()
-    relu2 = tf.nn.relu(mul2)
-    print "relu2.shape:", relu2.get_shape()
-
-    # Output layer
-    out = tf.matmul(relu2, _weights['out']) + _biases['out']
-    print "out.shape:", out.get_shape()
-    print "out: ", out
-
+    # Output, class prediction
+    out = tf.matmul(dense2, _weights['out']) + _biases['out']
     return out
 
-def buildModel() :
-    # Store layers weight & bias
-    weights = { # AKA Kernels
-        'wc1': tf.Variable(tf.random_normal([11, 11, 3, 96])),
-        'wc2': tf.Variable(tf.random_normal([5, 5, 96, 192])),
-        'wc3': tf.Variable(tf.random_normal([3, 3, 192, 384])),
-        'wc4': tf.Variable(tf.random_normal([3, 3, 384, 384])),
-        'wc5': tf.Variable(tf.random_normal([3, 3, 384, 256])),
+# Store layers weight & bias
+weights = {
+    'wc1': tf.Variable(tf.random_normal([3, 3, 1, 64])),
+    'wc2': tf.Variable(tf.random_normal([3, 3, 64, 128])),
+    'wc3': tf.Variable(tf.random_normal([3, 3, 128, 256])),
+    'wd1': tf.Variable(tf.random_normal([4*4*256, 1024])),
+    'wd2': tf.Variable(tf.random_normal([1024, 1024])),
+    'out': tf.Variable(tf.random_normal([1024, 3]))
+}
+biases = {
+    'bc1': tf.Variable(tf.random_normal([64])),
+    'bc2': tf.Variable(tf.random_normal([128])),
+    'bc3': tf.Variable(tf.random_normal([256])),
+    'bd1': tf.Variable(tf.random_normal([1024])),
+    'bd2': tf.Variable(tf.random_normal([1024])),
+    'out': tf.Variable(tf.random_normal([n_classes]))
+}
 
-        'wd1': tf.Variable(tf.random_normal([256, 4096])),
-        'wd2': tf.Variable(tf.random_normal([4096, 1024])),
+# Construct model
+pred = alex_net(x, weights, biases, keep_prob)
 
-        'out': tf.Variable(tf.random_normal([1024, N_CLASSES]))
-    }
+# Define loss and optimizer
+cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(pred, y))
+optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(cost)
 
-    biases = {
-        'bc1': tf.Variable(tf.random_normal([96])),
-        'bc2': tf.Variable(tf.random_normal([192])),
-        'bc3': tf.Variable(tf.random_normal([384])),
-        'bc4': tf.Variable(tf.random_normal([384])),
-        'bc5': tf.Variable(tf.random_normal([256])),
+# Evaluate model
+correct_pred = tf.equal(tf.argmax(pred,1), tf.argmax(y,1))
+accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32))
 
-        'bd1': tf.Variable(tf.random_normal([4096])),
-        'bd2': tf.Variable(tf.random_normal([1024])),
+# Initializing the variables
+init = tf.initialize_all_variables()
 
-        'out': tf.Variable(tf.random_normal([N_CLASSES]))
-    }
-
-    result = convolutionalNet(x, weights, biases, keepProb)
-
-    return result
-
-def genData() :
-    # Generate dummy data for standalone test-case
-    labels = []
-    images = []
-    for i in tqdm(range(TRAINING_ITERS)) :
-        images.append(np.ndarray(WIDTH * HEIGHT * 3, dtype='float32'))
-
-        onehot = np.zeros(N_CLASSES)
-        onehot[i % N_CLASSES] = 1.0
-        labels.append(onehot)
-
-    return zip(labels, images)
-
-def batchSequence(seq, size):
-    return (seq[pos:pos + size] for pos in xrange(0, len(seq), size))
-
-def main() :
-    # Build the model
-    pred = buildModel()
-
-    # Define loss function and optimizer
-    softmax = tf.nn.softmax_cross_entropy_with_logits(pred, y)
-    cost = tf.reduce_mean(softmax)
-
-    print "cost:", cost
-
-    print "pred:", pred
-    print "y:", y
-    optimizer = tf.train.AdamOptimizer(learning_rate=LEARNING_RATE).minimize(cost)
-    print "optimizer:", optimizer
-
-    # XXX Model evaluation
-
-    init = tf.initialize_all_variables()
-
-    data = genData()
-    batches = batchSequence(data, BATCH_SIZE)
-
-    with tf.Session() as sess :
-        sess.run(init)
-
-        iterations = 0
-        for batch in batches :
-            labels, images = [ list(l) for l in zip(*batch) ]
-
-            batchLabels = np.ndarray([ len(labels), N_CLASSES ])
-            for i, l in enumerate(labels) :
-                batchLabels[i] = l
-
-            batchImages = np.ndarray([ len(images), WIDTH * HEIGHT * 3 ])
-            for i, img in enumerate(images) :
-                batchImages[i] = img
-
-            sess.run(optimizer, feed_dict={x: batchImages, y: batchLabels, keepProb: P_DROPOUT})
-
-            iterations += len(labels)
-            if iterations >= TRAINING_ITERS :
-                break
-
-if __name__ == '__main__' :
-    main()
+# Launch the graph
+with tf.Session() as sess:
+    sess.run(init)
+    step = 1
+    # Keep training until reach max iterations
+    while step * batch_size < training_iters:
+        batch_xs, batch_ys = mnist.train.next_batch(batch_size)
+        # Fit training using batch data
+        sess.run(optimizer, feed_dict={x: batch_xs, y: batch_ys, keep_prob: dropout})
+        if step % display_step == 0:
+            # Calculate batch accuracy
+            acc = sess.run(accuracy, feed_dict={x: batch_xs, y: batch_ys, keep_prob: 1.})
+            # Calculate batch loss
+            loss = sess.run(cost, feed_dict={x: batch_xs, y: batch_ys, keep_prob: 1.})
+            print "Iter " + str(step*batch_size) + ", Minibatch Loss= " + "{:.6f}".format(loss) + ", Training Accuracy= " + "{:.5f}".format(acc)
+        step += 1
+    print "Optimization Finished!"
+    # Calculate accuracy for 256 mnist test images
+    print "Testing Accuracy:", sess.run(accuracy, feed_dict={x: mnist.test.images[:256], y: mnist.test.labels[:256], keep_prob: 1.})

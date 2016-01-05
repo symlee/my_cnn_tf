@@ -3,6 +3,27 @@ import numpy as np
 import import_images
 import pickle
 
+# TODO - currently missing weight decay (?) and local response regularization
+
+# parameters
+hPix = 240
+wPix = 376
+num_classes = 3
+
+learning_rate = 0.001
+momentum = 0.09
+
+batch_size = 32
+training_iterations = 100
+batch_increments = 128
+strides = [1, 1, 1, 1]
+ksize = [1, 3, 3, 1]  # size of the window for each dimension of the input tensor
+maxpool_strides = [1, 2, 2, 1] # stride of the sliding window for each dimension of the input tensor
+
+# placeholders for the probability that a neuron's output is kept during dropout (to prevent overfitting)
+p_keep_conv = tf.placeholder("float")
+p_keep_hidden = tf.placeholder("float")  # difference between keep_conv and keep_hidden?
+
 # return a random tensor w/ normal dist as a variable
 def init_weights(shape):
     return tf.Variable(tf.random_normal(shape, stddev=0.01))
@@ -17,27 +38,23 @@ def model(X, w, w2, w3, w4, w_o, p_keep_conv, p_keep_hidden):
     w_o = init_weights([48, 3])
     '''
     # First conv layer
-    l1a = tf.nn.relu(tf.nn.conv2d(X, w, [1, 1, 1, 1], 'SAME'))
+    l1a = tf.nn.relu(tf.nn.conv2d(X, w, strides, 'SAME'))
     print "l1a.shape:", l1a.get_shape()  # for debugging
-    l1 = tf.nn.max_pool(l1a, ksize=[1, 2, 2, 1],
-                        strides=[1, 2, 2, 1], padding='SAME')
-    # with prob p_keep_conv
-    l1 = tf.nn.dropout(l1, p_keep_conv)
+    l1 = tf.nn.max_pool(l1a, ksize, maxpool_strides, padding='SAME')
+    #l1 = tf.nn.dropout(l1, p_keep_conv)
     print "l1.shape:", l1.get_shape()
 
     # Second conv layer
-    l2a = tf.nn.relu(tf.nn.conv2d(l1, w2, [1, 1, 1, 1], 'SAME'))
+    l2a = tf.nn.relu(tf.nn.conv2d(l1, w2, strides, 'SAME'))
     print "l2a.shape:", l2a.get_shape()
-    l2 = tf.nn.max_pool(l2a, ksize=[1, 2, 2, 1],
-                        strides=[1, 2, 2, 1], padding='SAME')
-    l2 = tf.nn.dropout(l2, p_keep_conv)
+    l2 = tf.nn.max_pool(l2a, ksize, maxpool_strides, padding='SAME')
+    #l2 = tf.nn.dropout(l2, p_keep_conv)
     print "l2.shape:", l2.get_shape()
 
     # Third conv layer
-    l3a = tf.nn.relu(tf.nn.conv2d(l2, w3, [1, 1, 1, 1], 'SAME'))
+    l3a = tf.nn.relu(tf.nn.conv2d(l2, w3, strides, 'SAME'))
     print "l3a.shape:", l3a.get_shape()
-    l3 = tf.nn.max_pool(l3a, ksize=[1, 2, 2, 1],
-                        strides=[1, 2, 2, 1], padding='SAME')
+    l3 = tf.nn.max_pool(l3a, ksize, maxpool_strides, padding='SAME')
     print "l3.shape:", l3.get_shape()
 
     # Fully connected layer 1
@@ -48,12 +65,12 @@ def model(X, w, w2, w3, w4, w_o, p_keep_conv, p_keep_hidden):
     print "l3.shape:", l3.get_shape()
 
     # Fully connected layer 2
-    l4 = tf.nn.relu(tf.matmul(l3, w4))
+    l4 = tf.nn.relu(tf.matmul(l3, w4) + bf1)
     l4 = tf.nn.dropout(l4, p_keep_hidden)
     print "l4.shape:", l4.get_shape()
 
     # Output layer
-    pyx = tf.matmul(l4, w_o)
+    pyx = tf.matmul(l4, w_o) + bf2
     print "pyx.shape:", pyx.get_shape()
 
     return pyx
@@ -146,13 +163,12 @@ trX, trY, teX, teY = data.train.images, data.train.labels, data.test.images, dat
 # read in CMU datasets (import_images option using locally stored images)
 mnist = import_images.read_data_sets(one_hot=True) # (removed to create a self-contained file)
 trX, trY, teX, teY = mnist.train.images, mnist.train.labels, mnist.test.images, mnist.test.labels
-
-trX = trX.reshape(-1, 240, 376, 1)
-teX = teX.reshape(-1, 240, 376, 1)
+trX = trX.reshape(-1, hPix, wPix, 1)
+teX = teX.reshape(-1, hPix, wPix, 1)
 
 # tensor placeholders to be used during training and testing
-X = tf.placeholder("float", [None, 240, 376, 1])
-Y = tf.placeholder("float", [None, 3])
+X = tf.placeholder("float", [None, hPix, wPix, 1])
+Y = tf.placeholder("float", [None,num_classes])
 
 # shape of filters to be used in convolution layers in model
 '''
@@ -171,24 +187,27 @@ w3 = init_weights([3, 3, 12, 24])
 w4 = init_weights([33840, 48])
 w_o = init_weights([48, 3])
 
-# placeholders for the probability that a neuron's output is kept during dropout (to prevent overfitting)
-p_keep_conv = tf.placeholder("float")
-p_keep_hidden = tf.placeholder("float")  # difference between keep_conv and keep_hidden?
+bc1 = tf.Variable(tf.random_normal([6]))
+bc2 = tf.Variable(tf.random_normal([12]))
+bc3 = tf.Variable(tf.random_normal([24]))
+bf1 = tf.Variable(tf.random_normal([48]))
+bf2 = tf.Variable(tf.random_normal([3]))
 
 py_x = model(X, w, w2, w3, w4, w_o, p_keep_conv, p_keep_hidden)
 
 # somehow, dimensions of py_x doesn't match Y during execution and error is thrown...
 # dimension of Y is correct, as it has necessary shape [batch_size, num_classes]
 cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(py_x, Y))
-train_op = tf.train.RMSPropOptimizer(0.001, 0.9).minimize(cost)
+train_op = tf.train.RMSPropOptimizer(learning_rate, momentum).minimize(cost)
 predict_op = tf.argmax(py_x, 0) # reduces across the 1st dimension of py_x
 
 sess = tf.Session()
 init = tf.initialize_all_variables()
 sess.run(init)
 
-for i in range(100):
-    for start, end in zip(range(0, len(trX), 32), range(32, len(trX), 32)):  # original batch size: 128 (now 32 to conserve memory), original step size 128 (now 32)
+for i in range(training_iterations):
+    # original batch size: 128 (now 64 to conserve memory), original step size 128 (now 32)
+    for start, end in zip(range(0, len(trX), batch_increments), range(batch_size, len(trX), batch_increments)):
         sess.run(train_op, feed_dict={X: trX[start:end], Y: trY[start:end],
                                       p_keep_conv: 0.8, p_keep_hidden: 0.5})
 
