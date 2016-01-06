@@ -89,9 +89,9 @@ def read_data_sets(fake_data=False, one_hot=False):
 
     # Note: will need a training and testing vector of images and corresponding labels
 
-    datasets = ('winding_cloudy_up', 'smith_front')
+    datasets = ('winding_cloudy_up', 'smith_front', 'gates_bridge')
     '''
-                'gates_bridge', 'nsh_west_patio', 'health_building')
+                'nsh_west_patio', 'health_building')
 
                 'nshnorth_entrance_bright', 'nsheast_door_glass', 'main_walkway_tree', 'track_start_after5',
                 'track_box_net', 'squash_court', 'garage_entrance', 'gates_into_darkroom', 'wean_darkroom_entrance',
@@ -167,10 +167,12 @@ def read_data_sets(fake_data=False, one_hot=False):
         pickle.dump([imgMat, labMat], f)
     '''
 
-    img_mat = imgMat[:1200]
-    lab_mat = labMat[:1200]
-    img_mat_T = imgMat[1200:]
-    lab_mat_T = labMat[1200:]
+    train_test_split = int(totalNumImgs * 2/3)
+
+    img_mat = imgMat[:train_test_split]
+    lab_mat = labMat[:train_test_split]
+    img_mat_T = imgMat[train_test_split:]
+    lab_mat_T = labMat[train_test_split:]
 
     data.train = DataSet(img_mat, lab_mat)
     data.test = DataSet(img_mat_T, lab_mat_T)

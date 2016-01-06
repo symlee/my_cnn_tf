@@ -15,7 +15,7 @@ momentum = 0.09
 
 batch_size = 32
 training_iterations = 100
-batch_increments = 128
+batch_increments = 1024
 strides = [1, 1, 1, 1]
 ksize = [1, 3, 3, 1]  # size of the window for each dimension of the input tensor
 maxpool_strides = [1, 2, 2, 1] # stride of the sliding window for each dimension of the input tensor
